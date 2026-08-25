@@ -26,6 +26,14 @@ Baseline: OpenClaw `2026.7.1-2` (npm). Verified on a production gateway with a l
 4. The same core chunks outbound text with a generic markdown chunker at
    `resolveEffectiveTextChunkLimit` (≤ 4096). Rich messages allow 32768 characters and HTML media blocks
    are long; the cut landed inside a `<tg-slideshow>` and dropped the gallery plus the following heading.
+5. Telegram silently truncates a rich message at the block that would exceed **20 media items** and
+   drops every block after it (the Bot API docs promise "up to 50 media attachments in total"; the
+   Bot API server's own response still lists all blocks — the cut happens on Telegram's side).
+   Measured with direct `sendRichMessage` calls read back through Telethon: 21 photos → 18 photos and
+   the trailing text lost; galleries reordered → always the *last* gallery lost (not a bad URL);
+   exactly 20 → complete. OpenClaw's `TELEGRAM_RICH_MEDIA_LIMIT = 50` therefore let 21–50-media
+   messages through as one chunk, and `splitTelegramHtmlChunks` — once the limit is lowered — splits
+   in the middle of a `<tg-slideshow>` (2 photos in one message, 1 photo + caption in the next).
 
 ## Behaviour after the patch
 
@@ -42,6 +50,11 @@ Baseline: OpenClaw `2026.7.1-2` (npm). Verified on a production gateway with a l
   unless `forceDocument` is set. Remaining non-embeddable attachments follow the legacy sequence.
 - `resolveEffectiveTextChunkLimit` returns 32768 for rich accounts (configured limits above 4096 are
   respected up to 32768); non-rich accounts keep ≤ 4096.
+- `TELEGRAM_RICH_MEDIA_LIMIT` is 20; messages with more media are split into several rich messages.
+  `<tg-slideshow>`/`<tg-collage>` are atomic: when a gallery does not fit the remaining media budget
+  of the current chunk, the chunk is closed before the gallery (a single gallery larger than 20 is
+  still split by the per-media rule). Offline check with `splitTelegramRichMessageTextChunks`:
+  7 galleries × 3 photos → [6 galleries] + [gallery 7 + trailing text]; 20 photos → one message.
 
 ## Verification
 
@@ -56,3 +69,5 @@ Read the bot's messages from a user account with Telethon (layer ≥ 227):
 - Remote attachment URLs passed as `mediaUrls` are not embedded (write them as `<img src="https://…">`).
 - Telegram clients that do not render rich messages show the text without media (the message is
   still a single rich message).
+- The 20-media cap is an observed server-side behaviour (2026-08-25, Bot API 10.2/10.3 era), not a
+  documented one; if Telegram raises it, adjust `TELEGRAM_RICH_MEDIA_LIMIT` in `patchTelegramSendRichMediaLimit`.

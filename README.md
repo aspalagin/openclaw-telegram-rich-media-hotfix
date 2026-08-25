@@ -74,6 +74,8 @@ attachments): GIF animations, documents, video notes, remote attachment URLs pas
 | `telegram-rich-local-media-core` | `deliver-*.js` | new adapter capability `preferPayloadForMedia` routes text+media payloads to `sendPayload` |
 | `telegram-rich-local-media-prefer-payload` | `outbound-adapter-*.js` | Telegram opts in for rich accounts with local attachments |
 | `telegram-rich-chunk-limit` | `outbound-adapter-*.js` | rich accounts: core chunk limit 32768 instead of 4096 |
+| `telegram-rich-media-limit` | `send-*.js` (telegram) | `TELEGRAM_RICH_MEDIA_LIMIT` 50 → 20: Telegram silently drops everything from the 21st media on, so split instead |
+| `telegram-rich-media-limit-groups` | `sent-message-cache-*.js` | `splitTelegramHtmlChunks` keeps `<tg-slideshow>`/`<tg-collage>` intact: a gallery that does not fit the media budget starts the next chunk |
 
 See `HOTFIX_NOTES.md` for the investigation, verification method (Telethon `rich_message.blocks`) and limitations.
 

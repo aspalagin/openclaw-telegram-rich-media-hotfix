@@ -400,6 +400,64 @@ function patchTelegramOutboundAdapterRichChunkLimit(source) {
   );
 }
 
+// ---- telegram-rich-media-limit (2026-08-25) ----
+// Telegram молча обрезает rich-сообщение на блоке, с которого число медиа превышает 20, и выбрасывает все блоки после него,
+// хотя документация Bot API обещает «up to 50 media attachments in total». Проверено 25.08 прямыми sendRichMessage к локальному
+// Bot API 10.2 (Telethon читал rich_message.blocks): 21 фото → 18 + потерян последний слайдшоу и весь текст после него; ровно 20 →
+// целиком; тот же результат при перестановке галерей (не битые URL). Send bundle режет HTML по TELEGRAM_RICH_MEDIA_LIMIT=50,
+// поэтому сообщения с 21–50 медиа уходили одним куском и теряли хвост (#61780). Патч: лимит 20 → splitTelegramHtmlChunks
+// делит такие сообщения на несколько rich-сообщений по границам блоков.
+function patchTelegramSendRichMediaLimit(source) {
+  if (source.includes("hotfix: telegram-rich-media-limit")) return source;
+  return replaceOnce(
+    source,
+    "const TELEGRAM_RICH_MEDIA_LIMIT = 50;\n",
+    "// hotfix: telegram-rich-media-limit — фактический потолок Telegram: 20 медиа на rich-сообщение (при 21+ сервер молча отбрасывает блок и всё после него)\n"
+      + "const TELEGRAM_RICH_MEDIA_LIMIT = 20;\n",
+    "telegram send bundle: TELEGRAM_RICH_MEDIA_LIMIT",
+  );
+}
+
+// ---- telegram-rich-media-limit-groups (2026-08-25) ----
+// Дополнение к telegram-rich-media-limit: splitTelegramHtmlChunks считает каждый <img> внутри <tg-slideshow>/<tg-collage>
+// отдельным медиа и при достижении mediaLimit режет чанк ПОСЕРЕДИНЕ галереи (21 фото → 2 фото Denza в первом сообщении,
+// 1 фото + подпись во втором). Патч: галерея атомарна — если её медиа не помещаются в текущий чанк, чанк закрывается
+// перед открывающим тегом галереи (галерея больше лимита по-прежнему делится старым правилом).
+function patchTelegramSentCacheRichMediaGroups(source) {
+  if (source.includes("hotfix: telegram-rich-media-limit-groups")) return source;
+  const helperAnchor = "function isTelegramRichBlockHtmlTag(rawTag, tagName) {\n";
+  const helper =
+    "// hotfix: telegram-rich-media-limit-groups — счётчик медиа внутри галереи для атомарного переноса между чанками\n"
+    + "const TELEGRAM_RICH_MEDIA_GROUP_HTML_TAGS = /* @__PURE__ */ new Set([\"tg-slideshow\", \"tg-collage\"]);\n"
+    + "function countTelegramRichMediaGroupItems(html, from, groupTagName) {\n"
+    + "\tconst closeIndex = html.toLowerCase().indexOf(`</${groupTagName}>`, from);\n"
+    + "\tconst inner = html.slice(from, closeIndex === -1 ? html.length : closeIndex);\n"
+    + "\tconst pattern = /(<\\/?)([a-zA-Z][a-zA-Z0-9-]*)\\b[^>]*?>/gi;\n"
+    + "\tlet count = 0;\n"
+    + "\tlet match;\n"
+    + "\twhile ((match = pattern.exec(inner)) !== null) {\n"
+    + "\t\tif (match[1] === \"</\") continue;\n"
+    + "\t\tconst name = match[2].toLowerCase();\n"
+    + "\t\tif (name === \"figure\" || TELEGRAM_RICH_MEDIA_HTML_TAGS.has(name)) count += 1;\n"
+    + "\t}\n"
+    + "\treturn count;\n"
+    + "}\n";
+  let next = replaceOnce(source, helperAnchor, helper + helperAnchor, "telegram sent cache: rich media group helper anchor");
+  const loopAnchor =
+    "\t\tconst isRichMedia = !isClosing && (tagName === \"figure\" || TELEGRAM_RICH_MEDIA_HTML_TAGS.has(tagName) && !openTags.some((tag) => tag.name === \"figure\"));\n"
+    + "\t\tif (!isClosing) {\n";
+  const loopPatched =
+    "\t\tconst isRichMedia = !isClosing && (tagName === \"figure\" || TELEGRAM_RICH_MEDIA_HTML_TAGS.has(tagName) && !openTags.some((tag) => tag.name === \"figure\"));\n"
+    + "\t\t// hotfix: telegram-rich-media-limit-groups — галерея (<tg-slideshow>/<tg-collage>) не делится между rich-сообщениями: если её медиа не помещаются в чанк по mediaLimit, чанк закрывается перед открывающим тегом\n"
+    + "\t\tif (!isClosing && !isSelfClosing && mediaLimit !== void 0 && chunkHasPayload && TELEGRAM_RICH_MEDIA_GROUP_HTML_TAGS.has(tagName) && !openTags.some((tag) => TELEGRAM_RICH_MEDIA_GROUP_HTML_TAGS.has(tag.name))) {\n"
+    + "\t\t\tconst groupMediaCount = countTelegramRichMediaGroupItems(html, tagEnd, tagName);\n"
+    + "\t\t\tif (groupMediaCount > 0 && groupMediaCount <= mediaLimit && currentMediaCount + groupMediaCount > mediaLimit) flushCurrent();\n"
+    + "\t\t}\n"
+    + "\t\tif (!isClosing) {\n";
+  next = replaceOnce(next, loopAnchor, loopPatched, "telegram sent cache: splitTelegramHtmlChunks media group flush");
+  return next;
+}
+
 function main() {
   if (!fs.existsSync(distDir)) throw new Error(`dist directory does not exist: ${distDir}`);
   const installedVersion = JSON.parse(read(path.join(packageRoot, "package.json"))).version;
@@ -444,6 +502,8 @@ function main() {
     runApply(targets.deliverHandler, "telegram-rich-local-media-core", patchDeliverCorePreferPayloadForMedia),
     runApply(targets.telegramOutboundAdapter, "telegram-rich-local-media-prefer-payload", patchTelegramOutboundAdapterPreferPayload),
     runApply(targets.telegramOutboundAdapter, "telegram-rich-chunk-limit", patchTelegramOutboundAdapterRichChunkLimit),
+    runApply(targets.telegramSend, "telegram-rich-media-limit", patchTelegramSendRichMediaLimit),
+    runApply(targets.telegramSentCache, "telegram-rich-media-limit-groups", patchTelegramSentCacheRichMediaGroups),
   ];
   const changed = results.filter((result) => result.changed).length;
   console.log(`[telegram-rich-media-hotfix] complete changed=${changed} packageRoot=${packageRoot}`);

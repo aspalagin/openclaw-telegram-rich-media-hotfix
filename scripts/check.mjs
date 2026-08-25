@@ -51,6 +51,32 @@ const checks = [
     ],
   },
   {
+    id: "telegram-rich-media-limit",
+    gate: "required",
+    locate: (files) => findOneJs(files, "Telegram send bundle", [
+      "async function sendMessageTelegram(to, text, opts) {",
+      "function getTelegramRichRawApi(api) {",
+    ]),
+    assertions: [
+      contains("hotfix: telegram-rich-media-limit", "rich media limit marker"),
+      contains("const TELEGRAM_RICH_MEDIA_LIMIT = 20;", "rich media limit is 20 (Telegram silently truncates above)"),
+    ],
+  },
+  {
+    id: "telegram-rich-media-limit-groups",
+    gate: "required",
+    locate: (files) => findOneJs(files, "Telegram sent-message cache bundle", [
+      "function shouldUseTelegramDmThreadSession",
+      "function buildTelegramThreadParams",
+      "function resolveTelegramThreadSpec",
+    ]),
+    assertions: [
+      contains("hotfix: telegram-rich-media-limit-groups", "rich media group marker"),
+      contains("const TELEGRAM_RICH_MEDIA_GROUP_HTML_TAGS", "rich media group tag set"),
+      contains("const groupMediaCount = countTelegramRichMediaGroupItems(html, tagEnd, tagName);", "gallery-atomic flush in splitTelegramHtmlChunks"),
+    ],
+  },
+  {
     id: "telegram-rich-local-media-core",
     gate: "required",
     locate: (files) => findOneJs(files, "channel deliver handler bundle", [
