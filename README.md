@@ -1,5 +1,70 @@
 # OpenClaw Telegram rich media hotfix
 
+Portable hotfix scripts for **OpenClaw `2026.11.1`** and the retained
+`2026.7.1-2` release. The current port embeds local media in Telegram rich
+message blocks while preserving the existing attachment fallback.
+
+## OpenClaw 2026.11.1
+
+```bash
+git clone https://github.com/aspalagin/openclaw-telegram-rich-media-hotfix.git
+cd openclaw-telegram-rich-media-hotfix
+npm run check:syntax
+npm run dry-run:11.1 -- --package-root /usr/lib/node_modules/openclaw
+npm run apply:11.1 -- --package-root /usr/lib/node_modules/openclaw --backup-dir /var/backups/openclaw-rich-media
+npm run check:installed:11.1 -- --package-root /usr/lib/node_modules/openclaw
+npm run test:11.1 -- --package-root /usr/lib/node_modules/openclaw
+```
+
+Enable `channels.telegram.richMessages`. HTML/Markdown local paths and local
+attachments are loaded through OpenClaw's existing media loader and allowed
+roots, then inserted as `InputFile` objects into rich photo/video/audio blocks.
+The port handles text sends, replies and `sendPayload`; it retains unconsumed
+attachments, `forceDocument`, voice/video-note behavior and the
+`OPENCLAW_TELEGRAM_RICH_LOCAL_MEDIA=0` kill switch. It keeps the media limit at
+20 per rich message. Registry references use random UUIDs so another message
+cannot guess a pending attachment ID. A failed embedded-media send retries once without local
+media blocks when visible blocks remain, then releases the temporary registry.
+
+The old sanitizer and generic chunking patches are not reapplied: OpenClaw
+2026.11.1 already has rich-aware handling. This port uses its block model;
+it does not restore the legacy `rich_message.html`/`rich_message.media` layout
+or extend the configured media roots.
+
+Only `openclaw@2026.11.1` is accepted. All six target bundles are located by
+unique code signatures, planned and syntax-checked before any write. Originals
+are backed up together; a failed write restores files already replaced.
+The default backup directory is `./openclaw-hotfix-backups/`;
+`OPENCLAW_PACKAGE_ROOT` and `OPENCLAW_HOTFIX_BACKUP_DIR` are supported.
+Dry-run and check write nothing. Tests use disposable copies and mocked media
+and Telegram transports, with no live messages. CI uses Node.js 26.
+
+When combining this port with [Telegram Guest Mode](https://github.com/aspalagin/openclaw-telegram-guest-mode),
+use guest kit **1.5.1 or later** and apply rich media first, threaded mode (if used)
+next, and guest mode last. If guest mode was applied earlier, re-run its apply
+command after rich media and before restarting. From the guest kit directory:
+
+```bash
+node apply-guest-mode.mjs --package-root /usr/lib/node_modules/openclaw --backup-dir /var/backups/openclaw-guest
+node check-guest-mode.mjs --package-root /usr/lib/node_modules/openclaw
+```
+
+Keep `--with-ultrafast` on both guest commands if that option is in use, and
+run the rich-media and threaded-mode checkers again after the guest apply.
+
+Restart the gateway from an external shell after applying. To roll back,
+restore the printed backup's `dist/` files to the same package and restart.
+Run the version-specific commands above: the unsuffixed commands and the
+legacy scripts below still target `2026.7.1-2`.
+
+| OpenClaw version | Verification |
+| --- | --- |
+| `2026.11.1` | Pristine npm artifact: non-writing dry-run, checker rejects vanilla, apply/check, idempotence, version/drift guards, offline media and retry tests. |
+| `2026.7.1-2` | Original scripts and CI job retained unchanged. |
+| Other versions | Refused; require a new version-specific review. |
+
+## Legacy OpenClaw 2026.7.1-2
+
 Portable hotfix layer for **OpenClaw `2026.7.1-2`** that makes Telegram *rich messages*
 (Bot API 10.1+) carry media **inside** the message instead of sending photos as
 separate attachments:
