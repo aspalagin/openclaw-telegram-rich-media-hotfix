@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.11.3-1 - 2026-11-12
+
+- Add version-pinned apply/check commands for OpenClaw 2026.11.3, reusing the
+  existing rich-media patches and offline behavior checks.
+- Preserve 2026.11.1 and legacy commands, strict version/drift guards,
+  backups, allowed media roots and idempotence. CI covers both modern versions.
+
 ## v2026.11.1-1 - 2026-11-06
 
 - Add a version-pinned port for the current rich-block transport: local HTML,

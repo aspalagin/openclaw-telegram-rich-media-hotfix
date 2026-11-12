@@ -1,8 +1,25 @@
 # OpenClaw Telegram rich media hotfix
 
-Portable hotfix scripts for **OpenClaw `2026.11.1`** and the retained
+Portable hotfix scripts for **OpenClaw `2026.11.3` and `2026.11.1`** and the retained
 `2026.7.1-2` release. The current port embeds local media in Telegram rich
 message blocks while preserving the existing attachment fallback.
+
+## OpenClaw 2026.11.3
+
+Use the `:11.3` commands for an installed `openclaw@2026.11.3` package:
+
+```bash
+npm run dry-run:11.3 -- --package-root /usr/lib/node_modules/openclaw
+npm run apply:11.3 -- --package-root /usr/lib/node_modules/openclaw --backup-dir /var/backups/openclaw-rich-media
+npm run check:installed:11.3 -- --package-root /usr/lib/node_modules/openclaw
+npm run test:11.3 -- --package-root /usr/lib/node_modules/openclaw
+```
+
+This port preserves the rich-media behavior, backups, allowed roots and
+idempotence described below. Its entry points accept exactly 2026.11.3;
+the `:11.1` commands still accept exactly 2026.11.1. When combining the kits on
+11.3, apply rich media, threaded mode, then Guest Mode **1.5.4 or later**, and
+run all three checkers before restarting the gateway.
 
 ## OpenClaw 2026.11.1
 
@@ -59,6 +76,7 @@ legacy scripts below still target `2026.7.1-2`.
 
 | OpenClaw version | Verification |
 | --- | --- |
+| `2026.11.3` | Same pristine-artifact guards and offline behavior checks; composition checked with Threaded Mode and Guest Mode 1.5.4. |
 | `2026.11.1` | Pristine npm artifact: non-writing dry-run, checker rejects vanilla, apply/check, idempotence, version/drift guards, offline media and retry tests. |
 | `2026.7.1-2` | Original scripts and CI job retained unchanged. |
 | Other versions | Refused; require a new version-specific review. |
